@@ -1,6 +1,0 @@
-{
-  "layout": "layouts/simple-install.njk",
-  "tags": [
-      "install-app"
-  ]
-}

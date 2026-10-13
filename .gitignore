@@ -1,5 +1,7 @@
-_site/
 node_modules/
-.cache/
-.vscode/
-.idea
+.next/
+out/
+.env
+.env.local
+*.tsbuildinfo
+next-env.d.ts

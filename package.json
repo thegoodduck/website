@@ -1,46 +1,29 @@
 {
-  "name": "pi-apps",
+  "name": "koora-live-mirror",
   "version": "1.0.0",
-  "description": "Official Pi-Apps website",
+  "private": true,
   "scripts": {
-    "build": "npx eleventy",
-    "watch": "npx eleventy --watch",
-    "serve": "npx eleventy --serve",
-    "start": "npx eleventy --serve",
-    "debug": "DEBUG=* npx eleventy",
-    "lint": "markdownlint .",
-    "lint:fix": "markdownlint --fix ."
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "next lint"
   },
-  "repository": {
-    "type": "git",
-    "url": "git://github.com/Pi-Apps-Coders/website.git"
+  "dependencies": {
+    "next": "14.2.15",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "hls.js": "^1.5.15",
+    "cheerio": "^1.0.0",
+    "swr": "^2.2.5",
+    "peerjs": "^1.5.4"
   },
-  "author": {
-    "name": "theofficialgman",
-    "email": "28281419+theofficialgman@users.noreply.github.com",
-    "url": "https://github.com/theofficialgman"
-  },
-  "license": "GPL-3.0",
-  "bugs": {
-    "url": "https://github.com/Botspot/pi-apps/issues"
-  },
-  "homepage": "https://pi-apps.io/",
   "devDependencies": {
-    "@11ty/eleventy": "2.0.1",
-    "@11ty/eleventy-fetch": "4.0.1",
-    "@11ty/eleventy-img": "4.0.2",
-    "@11ty/eleventy-navigation": "0.3.5",
-    "@11ty/eleventy-plugin-rss": "1.2.0",
-    "@11ty/eleventy-plugin-syntaxhighlight": "5.0.0",
-    "@fontsource/inter": "5.0.21",
-    "@fortawesome/fontawesome-free": "6.6.0",
-    "clean-css": "5.3.3",
-    "eleventy-plugin-toc": "1.1.5",
-    "luxon": "3.5.0",
-    "markdown-it": "14.1.0",
-    "markdown-it-anchor": "9.2.0",
-    "markdown-it-eleventy-img": "0.10.2",
-    "markdown-it-table-of-contents": "0.8.0",
-    "markdownlint-cli": "^0.44.0"
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "typescript": "^5.5.0",
+    "tailwindcss": "^3.4.4",
+    "postcss": "^8.4.38",
+    "autoprefixer": "^10.4.19"
   }
 }
