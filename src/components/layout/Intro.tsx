@@ -202,7 +202,7 @@ export function Intro() {
     <div className={`intro ${leaving ? 'intro-out' : ''}`} aria-hidden="true">
       <canvas ref={canvasRef} className="intro-canvas" />
       <div className="intro-center">
-        <h1 className="intro-logo">soccer live</h1>
+        <h1 className="intro-logo">jai termine ce bail a 1h du mat :-)</h1>
       </div>
       <div className="intro-bottom">
         <div className="intro-bar"><div style={{ width: `${progress * 100}%` }} /></div>
