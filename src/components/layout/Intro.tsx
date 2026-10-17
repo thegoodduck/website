@@ -2,8 +2,8 @@
 
 import { useEffect, useRef, useState } from 'react';
 
-const DURATION = 11.5; // seconds of show before fade-out
-const FADE = 0.9;
+const DURATION = 4.5; // seconds of show before fade-out
+const FADE = 0.6;
 
 const STAGES = [
   'Warming up the pitch',
@@ -94,12 +94,13 @@ void main(){
   // fade in at start, flash at the end
   col *= smoothstep(0.0, 1.8, t);
   float flash = smoothstep(10.4, 11.3, t) * (1.0 - smoothstep(11.3, 11.6, t));
-  col += vec3(1.0,0.9,0.7) * flash * 1.2;
+  col += vec3(0.0) * flash;
 
   // vignette + tone map
   col *= 1.0 - 0.55*dot(uv,uv);
   col = 1.0 - exp(-col*1.25);
-  col = pow(col, vec3(0.85));
+  float g = dot(col, vec3(0.3,0.59,0.11));
+  col = vec3(g) * 0.5 * vec3(0.93,0.96,1.0);
   gl_FragColor = vec4(col, 1.0);
 }
 `;
@@ -201,15 +202,9 @@ export function Intro() {
     <div className={`intro ${leaving ? 'intro-out' : ''}`} aria-hidden="true">
       <canvas ref={canvasRef} className="intro-canvas" />
       <div className="intro-center">
-        <h1 className="intro-logo">
-          {'HAHA'.split('').map((ch, i) => (
-            <span key={i} style={{ animationDelay: `${1.2 + i * 0.16}s` }}>{ch}</span>
-          ))}
-        </h1>
-        <p className="intro-sub">Football en direct</p>
+        <h1 className="intro-logo">soccer live</h1>
       </div>
       <div className="intro-bottom">
-        <div className="intro-stage" key={stage}>{STAGES[stage]}…</div>
         <div className="intro-bar"><div style={{ width: `${progress * 100}%` }} /></div>
       </div>
     </div>
