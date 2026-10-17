@@ -10,11 +10,13 @@ import { createP2PLoader } from '@/lib/p2p/P2PLoader';
 
 interface Props {
   streamUrl: string | null;
+  youtubeId?: string | null;
+  embedUrl?: string | null;
   matchId: string;
   onPeerStats?: (stats: { peerCount: number; downloaded: number; uploaded: number }) => void;
 }
 
-export function VideoPlayer({ streamUrl, matchId, onPeerStats }: Props) {
+export function VideoPlayer({ streamUrl, youtubeId, embedUrl, matchId, onPeerStats }: Props) {
   const videoRef = useRef<HTMLVideoElement>(null);
   const hlsRef = useRef<Hls | null>(null);
   const meshRef = useRef<PeerMesh | null>(null);
@@ -23,6 +25,11 @@ export function VideoPlayer({ streamUrl, matchId, onPeerStats }: Props) {
   const [peerCount, setPeerCount] = useState(0);
 
   useEffect(() => {
+    if (youtubeId || embedUrl) {
+      setLoading(false);
+      return;
+    }
+
     if (!streamUrl || !videoRef.current) {
       setLoading(false);
       return;
@@ -33,7 +40,6 @@ export function VideoPlayer({ streamUrl, matchId, onPeerStats }: Props) {
     setError(null);
 
     if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS (Safari)
       video.src = streamUrl;
       video.addEventListener('loadeddata', () => setLoading(false), { once: true });
       video.addEventListener('error', () => { setError('Failed to load stream'); setLoading(false); }, { once: true });
@@ -101,7 +107,35 @@ export function VideoPlayer({ streamUrl, matchId, onPeerStats }: Props) {
       mesh?.destroy();
       meshRef.current = null;
     };
-  }, [streamUrl, matchId, onPeerStats]);
+  }, [streamUrl, youtubeId, embedUrl, matchId, onPeerStats]);
+
+  if (youtubeId) {
+    return (
+      <div className="player-container relative bg-black rounded-xl overflow-hidden aspect-video w-full">
+        <iframe
+          src={`https://www.youtube.com/embed/${youtubeId}?autoplay=1&rel=0`}
+          className="w-full h-full"
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          allowFullScreen
+        />
+      </div>
+    );
+  }
+
+  if (embedUrl && /^https?:\/\//i.test(embedUrl)) {
+    return (
+      <div className="player-container relative bg-black rounded-xl overflow-hidden aspect-video w-full">
+        <iframe
+          src={embedUrl}
+          className="w-full h-full"
+          allow="autoplay; encrypted-media; picture-in-picture; fullscreen"
+          allowFullScreen
+          sandbox="allow-scripts allow-same-origin allow-popups allow-presentation"
+          referrerPolicy="no-referrer"
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="player-container relative bg-black rounded-xl overflow-hidden aspect-video w-full">
@@ -113,7 +147,7 @@ export function VideoPlayer({ streamUrl, matchId, onPeerStats }: Props) {
       />
       <PlayerOverlay
         loading={loading}
-        error={!streamUrl ? 'Stream not available yet' : error}
+        error={streamUrl ? error : null}
         upcoming={!streamUrl && !error}
       />
       <PlayerControls videoRef={videoRef} peerCount={peerCount} />

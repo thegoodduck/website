@@ -1,131 +1,292 @@
 import * as cheerio from 'cheerio';
 import type { Match, ScraperSource } from '../types';
 
-const KOORA_URLS = [
-  'https://kooralive.com',
-  'https://kooora-live.com',
-  'https://koooralive.com',
+// Sites using the AY_Match WordPress theme structure
+const AY_SITES = [
+  'https://mediakorahd.com',
+  'https://kora-info.com',
+  'https://sportstv30.com',
 ];
 
-function hashId(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
-  }
-  return Math.abs(hash).toString(36);
-}
+// Sites using the elite-match-card structure
+const ELITE_SITES = [
+  'https://mobi-kora.com',
+];
 
-async function tryFetch(urls: string[]): Promise<{ html: string; baseUrl: string } | null> {
-  for (const url of urls) {
-    try {
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-          'Accept': 'text/html,application/xhtml+xml',
-          'Accept-Language': 'en-US,en;q=0.9,ar;q=0.8',
-        },
-        signal: AbortSignal.timeout(10000),
-      });
-      if (res.ok) {
-        return { html: await res.text(), baseUrl: url };
-      }
-    } catch {
-      continue;
-    }
-  }
-  return null;
-}
+const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36';
 
-function parseMatches(html: string, baseUrl: string): Match[] {
-  const $ = cheerio.load(html);
-  const matches: Match[] = [];
-
-  // Generic selectors that target common sports streaming site layouts
-  $('[class*="match"], [class*="game"], [class*="event"], .fixture, tr[data-id], .item').each((_, el) => {
-    const $el = $(el);
-    const text = $el.text().trim();
-    if (text.length < 5) return;
-
-    // Try to extract team names from common patterns
-    const teams = $el.find('[class*="team"], [class*="home"], [class*="away"], td:nth-child(1), td:nth-child(3)');
-    let homeTeam = '';
-    let awayTeam = '';
-
-    if (teams.length >= 2) {
-      homeTeam = teams.eq(0).text().trim();
-      awayTeam = teams.eq(1).text().trim();
-    } else {
-      // Try "Team A vs Team B" pattern
-      const vsMatch = text.match(/(.+?)\s+(?:vs?\.?|[-–])\s+(.+?)(?:\s*\d|$)/i);
-      if (vsMatch) {
-        homeTeam = vsMatch[1].trim();
-        awayTeam = vsMatch[2].trim();
-      }
-    }
-
-    if (!homeTeam || !awayTeam) return;
-    if (homeTeam.length > 50 || awayTeam.length > 50) return;
-
-    // Extract league
-    const league = $el.find('[class*="league"], [class*="competition"], [class*="tournament"]').first().text().trim()
-      || $el.closest('[class*="league"], [class*="group"]').find('[class*="title"], h3, h4').first().text().trim()
-      || 'Football';
-
-    // Detect live status
-    const isLive = $el.find('[class*="live"], .live, .on-air').length > 0
-      || /\blive\b/i.test($el.attr('class') || '')
-      || /\blive\b/i.test(text);
-
-    // Extract score if live
-    const scoreEl = $el.find('[class*="score"], [class*="result"]').first().text().trim();
-    const scoreMatch = scoreEl.match(/(\d+)\s*[-–:]\s*(\d+)/);
-
-    // Extract time
-    const timeEl = $el.find('[class*="time"], [class*="date"], time').first().text().trim();
-    const timeMatch = timeEl.match(/(\d{1,2}):(\d{2})/);
-
-    // Try to find link to stream
-    const link = $el.find('a').attr('href') || $el.closest('a').attr('href') || '';
-    const sourceUrl = link.startsWith('http') ? link : link ? `${baseUrl}${link.startsWith('/') ? '' : '/'}${link}` : baseUrl;
-
-    // Extract logos
-    const logos = $el.find('img[src*="team"], img[src*="logo"], img[src*="badge"]');
-    const homeTeamLogo = logos.eq(0).attr('src') || undefined;
-    const awayTeamLogo = logos.eq(1).attr('src') || undefined;
-
-    const id = hashId(`${homeTeam}-${awayTeam}-${league}`);
-
-    let kickoff = new Date().toISOString();
-    if (timeMatch) {
-      const now = new Date();
-      now.setHours(parseInt(timeMatch[1]), parseInt(timeMatch[2]), 0, 0);
-      kickoff = now.toISOString();
-    }
-
-    matches.push({
-      id,
-      homeTeam: homeTeam.slice(0, 40),
-      awayTeam: awayTeam.slice(0, 40),
-      homeTeamLogo,
-      awayTeamLogo,
-      league: league.slice(0, 60) || 'Football',
-      leagueId: hashId(league || 'football'),
-      sport: 'football',
-      status: isLive ? 'live' : 'upcoming',
-      kickoff,
-      score: scoreMatch ? `${scoreMatch[1]} - ${scoreMatch[2]}` : undefined,
-      sourceUrl,
+async function fetchHTML(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url, {
+      headers: { 'User-Agent': UA },
+      signal: AbortSignal.timeout(12000),
     });
+    if (!res.ok) return null;
+    return await res.text();
+  } catch {
+    return null;
+  }
+}
+
+function hashStr(text: string): string {
+  let h = 0;
+  for (let i = 0; i < text.length; i++) {
+    h = ((h << 5) - h + text.charCodeAt(i)) | 0;
+  }
+  return Math.abs(h).toString(36);
+}
+
+function slugify(text: string): string {
+  const ascii = text.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+  return ascii || hashStr(text);
+}
+
+// Arabic → English translation map for teams and leagues
+const TEAM_MAP: Record<string, string> = {
+  'ليفربول': 'Liverpool', 'مانشستر سيتي': 'Manchester City', 'باريس سان جيرمان': 'Paris Saint-Germain',
+  'ريال مدريد': 'Real Madrid', 'روما': 'Roma', 'أستون فيلا': 'Aston Villa',
+  'فنربخشة': 'Fenerbahce', 'فناربخشة': 'Fenerbahce', 'بوروسيا دورتموند': 'Borussia Dortmund',
+  'دورتموند': 'Borussia Dortmund', 'بودو جليمت': 'Bodo/Glimt', 'بودو/غليمت': 'Bodo/Glimt',
+  'شاختار دونيتسك': 'Shakhtar Donetsk', 'أيك أثينا': 'AEK Athens',
+  'ريال بيتيس': 'Real Betis', 'بورتو': 'Porto', 'سلوفان براتيسلافا': 'Slovan Bratislava',
+  'شتوتجارت': 'Stuttgart', 'فاينورد': 'Feyenoord', 'فينورد روتردام': 'Feyenoord',
+  'كومو': 'Como', 'لاسك لينز': 'LASK', 'لاسك': 'LASK',
+  'الفتح الرباطي': 'FUS Rabat', 'الفتح الرياضي': 'FUS Rabat',
+  'الرجاء البيضاوي': 'Raja Casablanca', 'الرجاء الرياضي': 'Raja Casablanca',
+  'ناساف كارشي': 'Nasaf Karshi', 'الوحدة': 'Al Wahda', 'الاتفاق': 'Al Ittifaq',
+  'كاظمة': 'Kazma', 'الدحيل': 'Al Duhail', 'الشباب': 'Al Shabab',
+  'عجمان': 'Ajman', 'أربيل': 'Erbil', 'التعاون': 'Al Taawon',
+  'الريان': 'Al Rayyan', 'الجزيرة': 'Al Jazira', 'أركاداج': 'Arkadag',
+  'الفيصلي': 'Al Faisaly', 'النهضة': 'Al Nahda', 'الكويت': 'Kuwait SC',
+  'الخالدية': 'Al Khaldiya', 'السد': 'Al Sadd', 'الهلال': 'Al Hilal',
+  'اتحاد طنجة': 'Ittihad Tanger', 'المغرب الفاسي': 'Maghreb de Fes',
+  'لانس': 'Lens', 'سبورتنج لشبونة': 'Sporting CP', 'صباح': 'Sabah FK',
+  'سلافيا براغ': 'Slavia Prague', 'إيست بنغال': 'East Bengal', 'الشرطة': 'Al Shorta',
+  'البنك الاهلي': 'National Bank', 'طلائع الجيش': 'Tala\'ea El-Gaish',
+  'الاتحاد السكندري': 'Al Ittihad Alexandria', 'الجونة': 'El Gouna',
+  'برشلونة': 'Barcelona', 'بايرن ميونخ': 'Bayern Munich', 'يوفنتوس': 'Juventus',
+  'ميلان': 'AC Milan', 'إنتر ميلان': 'Inter Milan', 'تشيلسي': 'Chelsea',
+  'أرسنال': 'Arsenal', 'توتنهام': 'Tottenham', 'مانشستر يونايتد': 'Manchester United',
+  'أتلتيكو مدريد': 'Atletico Madrid', 'نابولي': 'Napoli',
+  'السيب': 'Al Seeb', 'الحسين إربد': 'Al Hussein Irbid',
+  'بترول اسيوط': 'Petrojet', 'ابو قير للاسمدة': 'Abu Qir Fertilizers',
+  'وفاق سطيف': 'ES Setif', 'شبيبة القبائل': 'JS Kabylie',
+  'مستقبل الرويسات': 'MC Rouissat', 'تموشنت': 'WA Tlemcen',
+  // Short-form Arabic names (mobi-kora)
+  'شاختار': 'Shakhtar Donetsk', 'براتيسلافا': 'Slovan Bratislava',
+  'مان سيتي': 'Manchester City', 'باريس': 'Paris Saint-Germain',
+  'بيتيس': 'Real Betis', 'فيلا': 'Aston Villa',
+  'فنربخشه': 'Fenerbahce', 'بودو غليمت': 'Bodo/Glimt',
+};
+
+const LEAGUE_MAP: Record<string, string> = {
+  'أوروبا, دوري أبطال اوروبا': 'UEFA Champions League',
+  'دوري أبطال أوروبا': 'UEFA Champions League',
+  'آسيا, دوري أبطال آسيا 2': 'AFC Champions League 2',
+  'دوري أبطال الخليج': 'Gulf Champions League',
+  'المغرب, الدوري المغربي': 'Moroccan Championship',
+  'البطولة الوطنية المغربية': 'Moroccan Championship',
+  'الرابطة المحترفة الجزائرية': 'Algerian Ligue 1',
+  'الدوري المصري': 'Egyptian Premier League',
+  'دوري أبطال أفريقيا': 'CAF Champions League',
+};
+
+function translateName(name: string): string {
+  return TEAM_MAP[name] || name;
+}
+
+function translateLeague(league: string): string {
+  return LEAGUE_MAP[league] || league;
+}
+
+interface ParsedMatch {
+  team1: string;
+  team2: string;
+  time: string;
+  kickoff: string | undefined;
+  score: string | undefined;
+  status: 'live' | 'upcoming' | 'finished';
+  league: string;
+  channel: string | undefined;
+  streamUrl: string | undefined;
+  matchPageUrl: string | undefined;
+}
+
+function parseAYMatches(html: string, baseUrl: string): ParsedMatch[] {
+  const $ = cheerio.load(html);
+  const matches: ParsedMatch[] = [];
+
+  $('.AY_Match').each((_i, el) => {
+    const $el = $(el);
+    const team1 = $el.find('.TM1 .TM_Name').text().trim();
+    const team2 = $el.find('.TM2 .TM_Name').text().trim();
+    if (!team1 || !team2) return;
+
+    const time = $el.find('.MT_Time').text().trim();
+    const goals = $el.find('.RS-goals').map((_j, g) => $(g).text().trim()).get();
+    const statText = $el.find('.MT_Stat').text().trim();
+
+    const classes = $el.attr('class') || '';
+    let status: ParsedMatch['status'] = 'upcoming';
+    if (classes.includes('live')) status = 'live';
+    else if (classes.includes('finished')) status = 'finished';
+    else if (statText.includes('جارية') || statText.includes('مباشر')) status = 'live';
+    else if (statText.includes('انتهت')) status = 'finished';
+
+    const score = status !== 'upcoming' && goals.length >= 2
+      ? `${goals[0]} - ${goals[1]}`
+      : undefined;
+
+    const infoItems = $el.find('.MT_Info li span').map((_j, s) => $(s).text().trim()).get();
+    const channel = infoItems[0] || undefined;
+    const league = infoItems[2] || infoItems[1] || '';
+
+    const linkEl = $el.find('a').first();
+    const linkHref = linkEl.attr('href') || '';
+    const linkTitle = linkEl.attr('title') || '';
+    let streamUrl: string | undefined;
+    let matchPageUrl: string | undefined;
+
+    if (linkHref) {
+      const absoluteLink = linkHref.startsWith('http') ? linkHref : new URL(linkHref, baseUrl).toString();
+      const baseHost = new URL(baseUrl).hostname;
+      if (new URL(absoluteLink).hostname === baseHost && absoluteLink.includes('/matches/')) {
+        matchPageUrl = absoluteLink;
+      } else if (absoluteLink !== baseUrl && new URL(absoluteLink).hostname !== baseHost) {
+        streamUrl = absoluteLink;
+      }
+    }
+
+    // Extract date from title like "... بتاريخ 2026-10-14 ..."
+    const dateMatch = linkTitle.match(/(\d{4}-\d{2}-\d{2})/);
+    let kickoff: string | undefined;
+    if (dateMatch && time) {
+      const [h, m] = time.split(':').map(Number);
+      if (!isNaN(h) && !isNaN(m)) {
+        kickoff = `${dateMatch[1]}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:00+02:00`;
+      }
+    }
+
+    matches.push({ team1, team2, time, kickoff, score, status, league, channel, streamUrl, matchPageUrl });
   });
 
   return matches;
 }
 
+function parseEliteMatches(html: string, _baseUrl: string): ParsedMatch[] {
+  const $ = cheerio.load(html);
+  const matches: ParsedMatch[] = [];
+
+  $('a.elite-match-card').each((_i, el) => {
+    const $el = $(el);
+    const team1 = $el.find('.home-team .team-name-zn').text().trim();
+    const team2 = $el.find('.away-team .team-name-zn').text().trim();
+    if (!team1 || !team2) return;
+
+    const datetime = $el.attr('data-datetime') || '';
+    const homeScore = $el.find('.s-home').text().trim();
+    const awayScore = $el.find('.s-away').text().trim();
+    const statusText = $el.find('.status-zn').text().trim();
+    const classes = $el.attr('class') || '';
+
+    let status: ParsedMatch['status'] = 'upcoming';
+    if (classes.includes('status-live') || statusText.includes('جارية') || statusText.includes('مباشر')) status = 'live';
+    else if (classes.includes('status-finished') || statusText.includes('انتهت')) status = 'finished';
+
+    const score = status !== 'upcoming' && homeScore && awayScore
+      ? `${homeScore} - ${awayScore}`
+      : undefined;
+
+    const leagueRaw = $el.find('.league-zn').text().trim().replace(/^🏆\s*/, '');
+    const channelRaw = $el.find('.channel-zn').text().trim().replace(/^📺\s*/, '');
+    const channel = channelRaw && !channelRaw.includes('غير محددة') ? channelRaw : undefined;
+
+    const href = $el.attr('href') || '';
+    let streamUrl: string | undefined;
+    let matchPageUrl: string | undefined;
+    if (href && href !== '/' && href.startsWith('http')) {
+      streamUrl = href;
+    }
+
+    const time = datetime ? new Date(datetime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Africa/Cairo' }) : '';
+
+    matches.push({ team1, team2, time, kickoff: datetime || undefined, score, status, league: leagueRaw, channel, streamUrl, matchPageUrl });
+  });
+
+  return matches;
+}
+
+function toMatchId(team1: string, team2: string): string {
+  return `kl-${slugify(team1)}-${slugify(team2)}`.substring(0, 80);
+}
+
+function toISO(time: string): string {
+  if (!time) return new Date().toISOString();
+  const [h, m] = time.split(':').map(Number);
+  if (isNaN(h) || isNaN(m)) return new Date().toISOString();
+  const d = new Date();
+  d.setUTCHours(h - 2, m, 0, 0);
+  return d.toISOString();
+}
+
 export const kooraLiveSource: ScraperSource = {
   name: 'koora-live',
   async scrape() {
-    const result = await tryFetch(KOORA_URLS);
-    if (!result) return [];
-    return parseMatches(result.html, result.baseUrl);
+    const out: Match[] = [];
+    const seen = new Set<string>();
+
+    const addMatch = (pm: ParsedMatch, site: string) => {
+      const t1 = translateName(pm.team1);
+      const t2 = translateName(pm.team2);
+      const id = toMatchId(t1, t2);
+      if (seen.has(id)) {
+        if (pm.streamUrl) {
+          const existing = out.find(m => m.id === id);
+          if (existing && (existing.sourceUrl.includes('mediakorahd') || existing.sourceUrl.includes('kora-info') || existing.sourceUrl.includes('sportstv30'))) {
+            existing.sourceUrl = pm.streamUrl;
+          }
+        }
+        return;
+      }
+      seen.add(id);
+      const kickoff = pm.kickoff ? new Date(pm.kickoff).toISOString() : toISO(pm.time);
+      out.push({
+        id,
+        homeTeam: t1,
+        awayTeam: t2,
+        league: translateLeague(pm.league),
+        leagueId: `kl-${slugify(translateLeague(pm.league))}`,
+        sport: 'football',
+        status: pm.status,
+        kickoff,
+        score: pm.score,
+        sourceUrl: pm.streamUrl || pm.matchPageUrl || site,
+        channels: pm.channel ? [pm.channel] : undefined,
+      });
+    };
+
+    // Scrape AY_Match sites
+    const ayPages = AY_SITES.flatMap(site => [
+      { url: site, site },
+      { url: `${site}/matches-yesterday/`, site },
+    ]);
+    const ayHtmls = await Promise.all(ayPages.map(p => fetchHTML(p.url).then(html => ({ html, site: p.site }))));
+    for (const { html, site } of ayHtmls) {
+      if (!html) continue;
+      for (const pm of parseAYMatches(html, site)) {
+        addMatch(pm, site);
+      }
+    }
+
+    // Scrape Elite sites
+    const eliteHtmls = await Promise.all(ELITE_SITES.map(site => fetchHTML(site).then(html => ({ html, site }))));
+    for (const { html, site } of eliteHtmls) {
+      if (!html) continue;
+      for (const pm of parseEliteMatches(html, site)) {
+        addMatch(pm, site);
+      }
+    }
+
+    return out;
   },
 };

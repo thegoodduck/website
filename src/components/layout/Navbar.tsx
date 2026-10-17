@@ -10,9 +10,8 @@ export function Navbar() {
     <nav className="bg-surface border-b border-white/5 sticky top-0 z-50">
       <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
         <Link href="/" className="flex items-center gap-2">
-          <span className="text-accent text-2xl font-bold">⚽</span>
           <span className="text-xl font-bold">
-            Koora<span className="text-accent">Live</span>
+            Eloane<span className="text-accent">'s</span> Koora
           </span>
         </Link>
 

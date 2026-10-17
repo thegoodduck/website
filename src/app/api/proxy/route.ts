@@ -8,6 +8,15 @@ export async function GET(request: NextRequest) {
 
   try {
     const parsedUrl = new URL(url);
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return NextResponse.json({ error: 'Invalid protocol' }, { status: 400 });
+    }
+    const host = parsedUrl.hostname;
+    if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' ||
+        host.endsWith('.local') || host.endsWith('.internal') ||
+        /^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) {
+      return NextResponse.json({ error: 'Blocked host' }, { status: 403 });
+    }
     const res = await fetch(url, {
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
@@ -27,11 +36,25 @@ export async function GET(request: NextRequest) {
     if (isPlaylist) {
       let body = await res.text();
       // Rewrite segment/playlist URLs to go through proxy
-      const baseUrl = url.substring(0, url.lastIndexOf('/') + 1);
-      body = body.replace(/^(?!#)(\S+\.(?:ts|m3u8|m4s|key|mp4)[^\s]*)/gm, (match) => {
-        const absolute = match.startsWith('http') ? match : `${baseUrl}${match}`;
-        return `/api/proxy?url=${encodeURIComponent(absolute)}`;
-      });
+      const toProxy = (ref: string) => {
+        try {
+          return `/api/proxy?url=${encodeURIComponent(new URL(ref, res.url || url).toString())}`;
+        } catch {
+          return ref;
+        }
+      };
+      body = body
+        .split('\n')
+        .map((line) => {
+          const trimmed = line.trim();
+          if (!trimmed) return line;
+          if (trimmed.startsWith('#')) {
+            // Rewrite URI="..." attributes (keys, init segments, alt renditions, subtitles)
+            return line.replace(/URI="([^"]+)"/g, (_m, ref) => `URI="${toProxy(ref)}"`);
+          }
+          return toProxy(trimmed);
+        })
+        .join('\n');
 
       return new NextResponse(body, {
         headers: {

@@ -1,13 +1,12 @@
 'use client';
 
-import { use } from 'react';
 import { useMatches } from '@/hooks/useMatches';
 import { MatchGrid } from '@/components/match/MatchGrid';
 import { MatchCardSkeleton } from '@/components/common/Skeleton';
 import Link from 'next/link';
 
-export default function LeaguePage({ params }: { params: Promise<{ leagueId: string }> }) {
-  const { leagueId } = use(params);
+export default function LeaguePage({ params }: { params: { leagueId: string } }) {
+  const { leagueId } = params;
   const { matches, isLoading } = useMatches({ league: leagueId });
 
   const leagueName = matches[0]?.league || 'League';

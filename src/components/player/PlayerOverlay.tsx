@@ -19,7 +19,6 @@ export function PlayerOverlay({ loading, error, upcoming }: Props) {
       )}
       {error && (
         <div className="flex flex-col items-center gap-3 text-center px-4">
-          <span className="text-4xl">📡</span>
           <p className="text-accent-red font-semibold">Stream Unavailable</p>
           <p className="text-sm text-text-muted max-w-sm">{error}</p>
         </div>

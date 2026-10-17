@@ -1,6 +1,5 @@
 'use client';
 
-import { use } from 'react';
 import { useStream } from '@/hooks/useStream';
 import { useMatches } from '@/hooks/useMatches';
 import { usePeerStats } from '@/hooks/usePeerStats';
@@ -9,9 +8,9 @@ import { MatchGrid } from '@/components/match/MatchGrid';
 import { LiveBadge } from '@/components/match/LiveBadge';
 import Link from 'next/link';
 
-export default function WatchPage({ params }: { params: Promise<{ matchId: string }> }) {
-  const { matchId } = use(params);
-  const { streamUrl, isLoading: streamLoading } = useStream(matchId);
+export default function WatchPage({ params }: { params: { matchId: string } }) {
+  const { matchId } = params;
+  const { streamUrl, youtubeId, embedUrl, isLoading: streamLoading } = useStream(matchId);
   const { matches } = useMatches();
   const { stats, update } = usePeerStats();
 
@@ -28,6 +27,8 @@ export default function WatchPage({ params }: { params: Promise<{ matchId: strin
         <div className="lg:col-span-2">
           <VideoPlayer
             streamUrl={streamUrl}
+            youtubeId={youtubeId}
+            embedUrl={embedUrl}
             matchId={matchId}
             onPeerStats={update}
           />

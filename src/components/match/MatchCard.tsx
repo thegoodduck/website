@@ -22,9 +22,14 @@ export function MatchCard({ match }: { match: Match }) {
           {match.status === 'live' && match.score ? (
             <span className="text-lg font-bold text-accent">{match.score}</span>
           ) : (
-            <span className="text-xs text-text-muted">
-              {new Date(match.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-            </span>
+            <div className="flex flex-col">
+              <span className="text-[10px] text-text-muted/60">
+                {new Date(match.kickoff).toLocaleDateString([], { month: 'short', day: 'numeric' })}
+              </span>
+              <span className="text-xs text-text-muted">
+                {new Date(match.kickoff).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            </div>
           )}
         </div>
 

@@ -98,7 +98,7 @@ export function PlayerControls({ videoRef, peerCount }: Props) {
         </button>
 
         <button onClick={toggleMute} className="text-sm hover:text-accent transition">
-          {muted || volume === 0 ? '🔇' : '🔊'}
+          {muted || volume === 0 ? 'Muet' : 'Son'}
         </button>
 
         <input
