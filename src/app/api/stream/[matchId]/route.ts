@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as cheerio from 'cheerio';
 import { cacheGet, cacheSet } from '@/lib/cache';
 import { scrapeAllMatches } from '@/lib/scraper';
+import { assertPublicUrl, safeFetch } from '@/lib/ssrf';
 import type { Match } from '@/lib/scraper/types';
 
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
@@ -13,13 +14,9 @@ interface StreamResult {
 
 const KOORA_HOSTS = ['mediakorahd.com', 'kora-info.com', 'sportstv30.com', 'mobi-kora.com'];
 
-function isSafeUrl(url: string): boolean {
+async function isSafeUrl(url: string): Promise<boolean> {
   try {
-    const u = new URL(url);
-    if (!['http:', 'https:'].includes(u.protocol)) return false;
-    const host = u.hostname;
-    if (host === 'localhost' || host === '127.0.0.1' || host === '[::1]' || host.endsWith('.local')) return false;
-    if (/^(10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.)/.test(host)) return false;
+    await assertPublicUrl(url);
     return true;
   } catch {
     return false;
@@ -39,10 +36,10 @@ function isStreamPlayerDomain(url: string): boolean {
 
 async function resolveStreamUrl(sourceUrl: string, depth = 0): Promise<StreamResult | null> {
   if (depth > 4) return null;
-  if (!isSafeUrl(sourceUrl)) return null;
+  if (!(await isSafeUrl(sourceUrl))) return null;
 
   if (/\.m3u8(\?|$)/i.test(sourceUrl)) {
-    const check = await fetch(sourceUrl, {
+    const check = await safeFetch(sourceUrl, {
       method: 'HEAD',
       headers: { 'User-Agent': UA },
       signal: AbortSignal.timeout(5000),
@@ -57,10 +54,9 @@ async function resolveStreamUrl(sourceUrl: string, depth = 0): Promise<StreamRes
   }
 
   try {
-    const res = await fetch(sourceUrl, {
+    const res = await safeFetch(sourceUrl, {
       headers: { 'User-Agent': UA, 'Referer': new URL(sourceUrl).origin + '/' },
       signal: AbortSignal.timeout(10000),
-      redirect: 'follow',
     });
     if (!res.ok) {
       // If fetch fails but the URL looks like a player page, embed it directly
@@ -70,7 +66,7 @@ async function resolveStreamUrl(sourceUrl: string, depth = 0): Promise<StreamRes
       return null;
     }
 
-    const finalUrl = res.url || sourceUrl;
+    const finalUrl = res.finalUrl;
     const html = await res.text();
 
     // Detect redirect to Google (bot detection)
@@ -105,8 +101,8 @@ async function resolveStreamUrl(sourceUrl: string, depth = 0): Promise<StreamRes
         const url = match[1];
         if (url?.includes('.m3u8')) {
           const absolute = url.startsWith('http') ? url : new URL(url, finalUrl).toString();
-          if (!isSafeUrl(absolute)) continue;
-          const check = await fetch(absolute, {
+          if (!(await isSafeUrl(absolute))) continue;
+          const check = await safeFetch(absolute, {
             method: 'HEAD',
             headers: { 'User-Agent': UA },
             signal: AbortSignal.timeout(5000),
@@ -162,7 +158,7 @@ export async function GET(
   const cacheKey = `stream-${matchId}`;
   const cached = cacheGet<StreamResult>(cacheKey);
   if (cached) {
-    return respondWithResult(cached);
+    return await respondWithResult(cached);
   }
 
   const matches = cacheGet<Match[]>('matches') || await scrapeAllMatches();
@@ -177,25 +173,25 @@ export async function GET(
     if (isStreamPlayerDomain(match.sourceUrl) && !match.sourceUrl.includes('thesportsdb.com')) {
       const fallback: StreamResult = { type: 'embed', url: match.sourceUrl };
       cacheSet(cacheKey, fallback, 180_000);
-      return respondWithResult(fallback);
+      return await respondWithResult(fallback);
     }
     return NextResponse.json({ error: 'Stream not available yet' }, { status: 404 });
   }
 
   cacheSet(cacheKey, result, 300_000);
-  return respondWithResult(result);
+  return await respondWithResult(result);
 }
 
-function respondWithResult(result: StreamResult) {
+async function respondWithResult(result: StreamResult) {
   switch (result.type) {
     case 'youtube':
       return NextResponse.json({ streamUrl: null, youtubeId: result.url });
     case 'embed': {
-      if (!isSafeUrl(result.url)) return NextResponse.json({ error: 'Invalid stream URL' }, { status: 400 });
+      if (!(await isSafeUrl(result.url))) return NextResponse.json({ error: 'Invalid stream URL' }, { status: 400 });
       return NextResponse.json({ streamUrl: null, embedUrl: result.url });
     }
     case 'hls': {
-      if (!isSafeUrl(result.url)) return NextResponse.json({ error: 'Invalid stream URL' }, { status: 400 });
+      if (!(await isSafeUrl(result.url))) return NextResponse.json({ error: 'Invalid stream URL' }, { status: 400 });
       return NextResponse.json({ streamUrl: `/api/proxy?url=${encodeURIComponent(result.url)}` });
     }
   }
