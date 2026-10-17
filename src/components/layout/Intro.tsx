@@ -202,11 +202,11 @@ export function Intro() {
       <canvas ref={canvasRef} className="intro-canvas" />
       <div className="intro-center">
         <h1 className="intro-logo">
-          {'ELOANE'.split('').map((ch, i) => (
+          {'LIVE'.split('').map((ch, i) => (
             <span key={i} style={{ animationDelay: `${1.2 + i * 0.16}s` }}>{ch}</span>
           ))}
         </h1>
-        <p className="intro-sub">Live football · P2P powered</p>
+        <p className="intro-sub">Football en direct</p>
       </div>
       <div className="intro-bottom">
         <div className="intro-stage" key={stage}>{STAGES[stage]}…</div>
